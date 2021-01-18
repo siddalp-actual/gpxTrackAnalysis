@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 # My private stuff
+notebooks
 notebooks/*

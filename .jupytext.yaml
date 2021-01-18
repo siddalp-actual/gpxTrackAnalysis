@@ -1,0 +1,1 @@
+default_jupytext_formats : notebook//ipynb,py:light
