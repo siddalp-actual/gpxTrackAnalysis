@@ -14,7 +14,8 @@
 
 # # Distances along a Track
 #
-# For the Harrier's 2021 Scavenger Hunt I nned to pull out the distance travellled in the best 27:44 of a track.
+# For the Harrier's 2021 Scavenger Hunt I nned to pull out the distance
+# travellled in the best 27:44 of a track.  So I dug into an old notebook where I'd started looking at the differences between gpx tracks from OSMAnd, routes built with OSMAnd, and track from my old Garmin GPS.
 
 # +
 # %matplotlib inline
@@ -188,9 +189,17 @@ df[["GPS Speed", "gpxpy_speed", "seg_speed"]].plot()
 
 # -
 
-# At this point, I have a Data_frame with distance and time deltas between each consecutive point. Now we have to perform an n-squared iteration such that for every start point, we add points to meet a criteria (within 'Mo time', greater than 5k etc).  Then maximise or minimize over that.
+# At this point, I have a Data_frame with distance and time deltas between
+# each consecutive point. Now we have to perform an n-squared iteration
+# such that for every start point, we add points to meet a criteria
+# (within 'Mo time', greater than 5k etc). Then maximise or minimize over
+# that.
 #
-# The $O(n^2)$ algorithm is held in `build_distance_list()` below.  Subsequently I made this go nearly 30x faster by taking the first solution, then removing the first point and adding subsequent points to match the required criteria.  See `faster_distance_list()`.  I think this is now closer to $O(n)$.
+# The $O(n^2)$ algorithm is held in `build_distance_list()` below.
+# Subsequently I made this go nearly 30x faster by taking the first
+# solution, then removing the first point and adding subsequent points to
+# match the required criteria. See `faster_distance_list()`. I think this
+# is now closer to $O(n)$.
 
 MO = datetime.timedelta(seconds=27 * 60 + 44)  # Mo's WR 10k 27:44
 print(MO)
@@ -324,9 +333,13 @@ display(dl)
 
 # -
 
-# The `dl`, distances_list, Data_frame has the set of points and the time & distance they encompass for each sub-range that meets the criteria
+# The `dl`, distances_list, Data_frame has the set of points and the time
+# & distance they encompass for each sub-range that meets the criteria
 
-# At this point, I started to realise that my calculated best time and pace where a bit different from those which Strava had found, so I embarked on a side mission to try to bring the two sets of results into agreement.  See [Removing Stops](#Removing-Stops), below.
+# At this point, I started to realise that my calculated best time and
+# pace where a bit different from those which Strava had found, so I
+# embarked on a side mission to try to bring the two sets of results into
+# agreement. See [Removing Stops](#Removing-Stops), below.
 
 # dl.index = dl['start_time']
 dl["secs_per_km"] = (
@@ -342,18 +355,25 @@ display(
 
 # ## Removing Stops
 #
-# Now I want to pull the stopped time out of my track. For this morning's 'Winnall Moors explore', I stopped for some time in Hoxton's buying bread.  Strava stats are:
-#  - distance 7.42km
-#  - moving time 36:44
-#  - elapsed time 44:03
-#  - pace 4:57/km
-#  - climb 38m
+# Now I want to pull the stopped time out of my track. For this morning's
+# 'Winnall Moors explore', I stopped for some time in Hoxton's buying
+# bread. Strava stats are:
 #
-# I've also just read an article about Pandas Pipes so let's make one to pull some points out.
+# -   distance 7.42km
+# -   moving time 36:44
+# -   elapsed time 44:03
+# -   pace 4:57/km
+# -   climb 38m
 #
-# > first issue I've come across is that the track is split across 2 segments, presumably by the long gap at the bread shop.  I need to add these together.
+# I've also just read an article about Pandas Pipes so let's make one to
+# pull some points out.
 #
-# It looks as though I get the Strava moving time by using the points where the point speed is > 3km/h
+# > first issue I've come across is that the track is split across 2
+# > segments, presumably by the long gap at the bread shop. I need to add
+# > these together.
+#
+# It looks as though I get the Strava moving time by using the points
+# where the point speed is \> 3km/h
 
 # +
 def remove_slow_point(in_df):
@@ -402,7 +422,10 @@ strava_stat(dj)
 strava_stat(dk)
 # -
 
-# There's much better agreement with the Strava data once I've removed the 'tdiff' associated with the points where the average speed moving here from the previous point is less than the threshold 3km/h.  However, It looks as though I do need to keep the distance.
+# There's much better agreement with the Strava data once I've removed the
+# 'tdiff' associated with the points where the average speed moving here
+# from the previous point is less than the threshold 3km/h. However, It
+# looks as though I do need to keep the distance.
 
 dl = faster_distance_list(dk, greater_than5mi)  # 170ms
 dl.index = dl["start_time"]
