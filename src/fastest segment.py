@@ -15,7 +15,9 @@
 # # Distances along a Track
 #
 # For the Harrier's 2021 Scavenger Hunt I nned to pull out the distance
-# travellled in the best 27:44 of a track.  So I dug into an old notebook where I'd started looking at the differences between gpx tracks from OSMAnd, routes built with OSMAnd, and track from my old Garmin GPS.
+# travellled in the best 27:44 of a track.  So I dug into an old notebook 
+# where I'd started looking at the differences between gpx tracks from 
+# OSMAnd, routes built with OSMAnd, and track from my old Garmin GPS.
 
 # +
 # %matplotlib inline
