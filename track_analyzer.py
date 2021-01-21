@@ -62,9 +62,7 @@ class TrackData:
             else:
                 speed = float(0)
             if point_no != 0:
-                calc_speed = point.speed_between(
-                    track_segment.points[point_no - 1]
-                )
+                calc_speed = point.speed_between(track_segment.points[point_no - 1])
                 #  distance = point.distance_3d(track_segment.points[point_no - 1])
                 distance = point.distance_2d(track_segment.points[point_no - 1])
             else:
@@ -97,9 +95,7 @@ class TrackData:
         )
 
         local_df.index = local_df["dt"]
-        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(
-            pd.Timedelta(seconds=0)
-        )
+        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(pd.Timedelta(seconds=0))
 
         return local_df
 
@@ -123,9 +119,7 @@ class TrackData:
                     (up_m, down_m) = (0, 0)
 
                 moving_data = moving_data.append(
-                    segment.get_moving_data(
-                        stopped_speed_threshold=1
-                    )._asdict(),
+                    segment.get_moving_data(stopped_speed_threshold=1)._asdict(),
                     ignore_index=True,
                 )
                 if segment.has_times():
@@ -149,8 +143,165 @@ class TrackData:
         """
         display track summary information built from segments
         """
-        print("Moving Distance", self.segment_data.sum()["moving_distance"])
-        print(pd.Timedelta(seconds=self.segment_data.sum()["moving_time"]))
+        print("Segment summary:")
+        print(f"{self.segment_data.count()} segments")
+        print("Total moving Distance", self.segment_data.sum()["moving_distance"])
+        print(
+            "Total moving Time",
+            pd.Timedelta(seconds=self.segment_data.sum()["moving_time"]),
+        )
+
+    def guess_activity_type(self):
+        """
+        guess what activity each segment corresponds with, can be one of
+        'walk', 'run', 'cycle'
+        we set a likelihood of activity type based on both the pace and distance
+        """
+        # speed in m/s
+        self.segment_data["moving_speed"] = (
+            self.segment_data["moving_distance"] / self.segment_data["moving_time"]
+        )
+        # pace is a Timedelta representing time for 1km,
+        self.segment_data["pace"] = self.segment_data["moving_speed"].apply(
+            lambda x: pd.Timedelta(seconds=1000 / x)
+        )
+
+        def walk_likelihood(speed):
+            """
+            rises from 0 at 0 m/s to 1 at 9:19 pace (4mph),
+            then back down to 0 at 6:19 pace (10 min mile)
+            In m/s these thresholds are 0, 1.788, 2.867
+            """
+            if speed < 1.788:
+                return speed / 1.788
+            if speed < 2.867:
+                return (2.867 - speed) / (2.867 - 1.788)
+            return 0
+
+        def run_likelihood(speed):
+            """
+            rises from 0 at 9:19 pace to 1 at 6:19 pace
+            1 from 6:19 thru 4:22
+            falls to 0 from 4:22 thru 3:45
+            in m/s these thresholds are 1.788, 2.867, 3.810, 4.444
+            """
+            if speed < 1.788:
+                return 0
+            if speed < 2.867:
+                return (speed - 1.788) / (2.867 - 1.788)
+            if speed < 3.810:
+                return 1
+            if speed < 4.444:
+                return (4.444 - speed) / (4.444 - 3.810)
+            return 0
+
+        def cycle_likelihood(speed):
+            """
+            rises from 0 at slow-run pace to 1 at slow cycle pace
+            stays at 1 from slow cycle to long distance cycle pace
+            then drops back to 0 at twice that
+            in m/s these thresholds are 2.687, 4.444, 5.010, 10
+            """
+            if speed < 2.687:
+                return 0
+            if speed < 4.444:
+                return (speed - 2.687) / (4.444 - 2.687)
+            if speed < 5.010:
+                return 1
+            if speed < 10:
+                return (10 - speed) / (10 - 5.010)
+            return 0
+
+        def walking_distance(dist):
+            """
+            Very likely from 0-5k
+            Then reduces, say, linearly to 20k
+            """
+            if dist < 5000:
+                return 1
+            if dist < 20000:
+                return (dist - 5000) / (20000 - 5000)
+            return 0
+
+        def running_distance(dist):
+            """
+            Very likely from 3k - 20k
+            Reducing down to 30k
+            0 > 30k
+            """
+            if dist < 3000:
+                return 0
+            if dist < 5000:
+                return (dist - 3000) / (5000 - 3000)
+            if dist < 20000:
+                return 1
+            if dist < 30000:
+                return (30000 - dist) / (30000 - 20000)
+            return 0
+
+        def cycling_distance(dist):
+            """
+            shopping trips tend to be ~ 3k
+            20-50k almost certainly cylcling
+            50-120k reducing likelihood
+            """
+            if dist < 20000:
+                return dist / 20000
+            if dist < 50000:
+                return 1
+            if dist < 120000:
+                return (120000 - dist) / (120000 - 50000)
+            return 0
+
+        self.segment_data["P(walk) from speed"] = self.segment_data[
+            "moving_speed"
+        ].apply(walk_likelihood)
+        self.segment_data["P(run) from speed"] = self.segment_data[
+            "moving_speed"
+        ].apply(run_likelihood)
+        self.segment_data["P(cycle) from speed"] = self.segment_data[
+            "moving_speed"
+        ].apply(cycle_likelihood)
+        self.segment_data["P(walk) from distance"] = self.segment_data[
+            "moving_distance"
+        ].apply(walking_distance)
+        self.segment_data["P(run) from distance"] = self.segment_data[
+            "moving_distance"
+        ].apply(running_distance)
+        self.segment_data["P(cycle) from distance"] = self.segment_data[
+            "moving_distance"
+        ].apply(cycling_distance)
+
+        # Having calculated these likelihoods, now lets average them and use
+        # the highest as our guess.
+
+        walk_likelihood = (
+            self.segment_data["P(walk) from distance"]
+            + self.segment_data["P(walk) from speed"]
+        )
+        run_likelihood = (
+            self.segment_data["P(run) from distance"]
+            + self.segment_data["P(run) from speed"]
+        )
+        cycle_likelihood = (
+            self.segment_data["P(cycle) from distance"]
+            + self.segment_data["P(cycle) from speed"]
+        )
+
+        # however, the xxx_likelihood is a series across segments, just sum
+        if walk_likelihood.sum() > run_likelihood.sum():
+            if walk_likelihood.sum() > cycle_likelihood.sum():
+                return "walk"
+
+        if run_likelihood.sum() > cycle_likelihood.sum():
+            if run_likelihood.sum() > walk_likelihood.sum():
+                return "run"
+
+        if cycle_likelihood.sum() > walk_likelihood.sum():
+            if cycle_likelihood.sum() > run_likelihood.sum():
+                return "cycle"
+
+        return "undetermined"
 
 
 class TestStuff(unittest.TestCase):
@@ -169,14 +320,12 @@ class TestStuff(unittest.TestCase):
         this gpx was recorded on OSMAnd, has times, elevations and speeds
         """
         t_0 = TrackData()
-        t_0.slurp(
-            "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
-        )
+        t_0.slurp("/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx")
         self.assertFalse(t_0.segment_data.empty)
         self.assertFalse(t_0.track_data.empty)
         t_0.segment_summary()
 
-    @unittest.skip("run the road relay stats")
+    # @unittest.skip("run the road relay stats")
     def test_01(self):
         """
         this gpx was recorded on OSMAnd, has times, elevations and speeds
@@ -187,6 +336,26 @@ class TestStuff(unittest.TestCase):
         )
         t_1.segment_summary()
         self.assertTrue(t_1)
+        t_1.guess_activity_type()
+        print(t_1.segment_data)
+
+    def test_02(self):
+        """
+        this is a cycle ride
+        """
+        t_2 = TrackData()
+        t_2.slurp("/home/siddalp/Dropbox/pgm/gpx/Wet_shopping_trip.gpx")
+        self.assertEqual(t_2.guess_activity_type(), "cycle")
+        print(t_2.segment_data)
+
+    def test_03(self):
+        """
+        this is a run
+        """
+        t_3 = TrackData()
+        t_3.slurp("/home/siddalp/Dropbox/pgm/gpx/_The_Everest_.gpx")
+        self.assertEqual(t_3.guess_activity_type(), "run")
+        print(t_3.segment_data)
 
 
 def do_tests():
@@ -203,12 +372,8 @@ def main():
     will slurp in a file, or run unit tests
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--test", help="run the unit tests", action="store_true"
-    )
-    parser.add_argument(
-        "filename", help="track file to be read", type=str, nargs="?"
-    )
+    parser.add_argument("--test", help="run the unit tests", action="store_true")
+    parser.add_argument("filename", help="track file to be read", type=str, nargs="?")
     args = parser.parse_args()
     if args.test:
         print("running unit tests")
