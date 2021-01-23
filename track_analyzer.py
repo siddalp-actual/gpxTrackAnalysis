@@ -35,12 +35,27 @@ class TrackData:
             self.process(gpx_file)
 
     @staticmethod
-    def get_point_info(track_segment):
+    def isnotebook():
+        """
+        test the environment to see whether we're running under Jupyter
+        """
+        try:
+            shell = get_ipython().__class__.__name__
+            if shell == "ZMQInteractiveShell":
+                return True  # Jupyter notebook or qtconsole
+            if shell == "TerminalInteractiveShell":
+                return False  # Terminal running IPython
+            return False  # Other type (?)
+        except NameError:
+            return False  # Probably standard Python interpreter
+
+    @staticmethod
+    def get_point_info(segment_number, track_segment):
         """
         extract data from points in a segment and push it into a DataFrame
         """
         col_names = (
-            "No,Date_time,Latitude,Longitude,Altitude,GPS Speed,DOP,"
+            "SegNo,PointNo,Date_time,Latitude,Longitude,Altitude,GPS Speed,DOP,"
             "gpxpy_speed,seg_speed,delta_dist"
         )
         cols = list(col_names.split(","))
@@ -62,7 +77,9 @@ class TrackData:
             else:
                 speed = float(0)
             if point_no != 0:
-                calc_speed = point.speed_between(track_segment.points[point_no - 1])
+                calc_speed = point.speed_between(
+                    track_segment.points[point_no - 1]
+                )
                 #  distance = point.distance_3d(track_segment.points[point_no - 1])
                 distance = point.distance_2d(track_segment.points[point_no - 1])
             else:
@@ -72,6 +89,7 @@ class TrackData:
             seg_speed = float(track_segment.get_speed(point_no))
 
             local_df.loc[point_no] = [
+                segment_number,
                 point_no,
                 point.time,
                 point.latitude,
@@ -95,7 +113,9 @@ class TrackData:
         )
 
         local_df.index = local_df["dt"]
-        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(pd.Timedelta(seconds=0))
+        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(
+            pd.Timedelta(seconds=0)
+        )
 
         return local_df
 
@@ -103,7 +123,7 @@ class TrackData:
         """
         iterate over the tracks and their segments in the file,
          - output some summary info
-         - use show_point_info to create a DataFrame which is then exposed
+         - use get_point_info to create a DataFrame which is then exposed
            at the global level for use in subsequent cells
         """
 
@@ -112,14 +132,23 @@ class TrackData:
         for track in gpx.tracks:
             all_data = pd.DataFrame()
             moving_data = pd.DataFrame()
-            for segment in track.segments:
+            for seg_no, segment in enumerate(track.segments):
                 if segment.has_elevations():
                     (up_m, down_m) = segment.get_uphill_downhill()
                 else:
                     (up_m, down_m) = (0, 0)
 
+                moving_data_dict = segment.get_moving_data(
+                    stopped_speed_threshold=1
+                )._asdict()
+
+                moving_data_dict["ascent"] = up_m
+                moving_data_dict["descent"] = down_m
+                moving_data_dict["2d length"] = segment.length_2d()
+                moving_data_dict["3d length"] = segment.length_3d()
+
                 moving_data = moving_data.append(
-                    segment.get_moving_data(stopped_speed_threshold=1)._asdict(),
+                    moving_data_dict,
                     ignore_index=True,
                 )
                 if segment.has_times():
@@ -127,16 +156,9 @@ class TrackData:
                     self.duration = pd.Timedelta(seconds=secs)
                 else:
                     self.duration = pd.Timedelta(seconds=0)
-                print(
-                    "2d length: {} 3d length: {}".format(
-                        segment.length_2d(), segment.length_3d()
-                    )
-                )
-                print("climb: {}m descent: {}m".format(up_m, down_m))
 
-                all_data = all_data.append(self.get_point_info(segment))
+                all_data = all_data.append(self.get_point_info(seg_no, segment))
             self.track_data = all_data
-            print(self.track_data)
             self.segment_data = moving_data
 
     def segment_summary(self):
@@ -144,12 +166,18 @@ class TrackData:
         display track summary information built from segments
         """
         print("Segment summary:")
-        print(f"{self.segment_data.count()} segments")
-        print("Total moving Distance", self.segment_data.sum()["moving_distance"])
+        print(f"{self.segment_data['moving_distance'].count()} segments")
+        print(
+            "Total moving Distance", self.segment_data.sum()["moving_distance"]
+        )
         print(
             "Total moving Time",
             pd.Timedelta(seconds=self.segment_data.sum()["moving_time"]),
         )
+        if TrackData.isnotebook():
+            display(self.segment_data)
+        else:
+            print(self.segment_data)
 
     def guess_activity_type(self):
         """
@@ -159,7 +187,8 @@ class TrackData:
         """
         # speed in m/s
         self.segment_data["moving_speed"] = (
-            self.segment_data["moving_distance"] / self.segment_data["moving_time"]
+            self.segment_data["moving_distance"]
+            / self.segment_data["moving_time"]
         )
         # pace is a Timedelta representing time for 1km,
         self.segment_data["pace"] = self.segment_data["moving_speed"].apply(
@@ -303,6 +332,15 @@ class TrackData:
 
         return "undetermined"
 
+    def show_point_info(self):
+        """
+        display the pandas DataFrame of point data
+        """
+        if TrackData.isnotebook():
+            display(self.track_data)
+        else:
+            print(self.track_data)
+
 
 class TestStuff(unittest.TestCase):
     """
@@ -320,7 +358,9 @@ class TestStuff(unittest.TestCase):
         this gpx was recorded on OSMAnd, has times, elevations and speeds
         """
         t_0 = TrackData()
-        t_0.slurp("/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx")
+        t_0.slurp(
+            "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
+        )
         self.assertFalse(t_0.segment_data.empty)
         self.assertFalse(t_0.track_data.empty)
         t_0.segment_summary()
@@ -337,6 +377,7 @@ class TestStuff(unittest.TestCase):
         t_1.segment_summary()
         self.assertTrue(t_1)
         t_1.guess_activity_type()
+        t_1.show_point_info()
         print(t_1.segment_data)
 
     def test_02(self):
@@ -372,8 +413,12 @@ def main():
     will slurp in a file, or run unit tests
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--test", help="run the unit tests", action="store_true")
-    parser.add_argument("filename", help="track file to be read", type=str, nargs="?")
+    parser.add_argument(
+        "--test", help="run the unit tests", action="store_true"
+    )
+    parser.add_argument(
+        "filename", help="track file to be read", type=str, nargs="?"
+    )
     args = parser.parse_args()
     if args.test:
         print("running unit tests")
@@ -384,7 +429,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+    sys.exit()
 else:
     print(f"module {__module__} imported")
-
-sys.exit()
