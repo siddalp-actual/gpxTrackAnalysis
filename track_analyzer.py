@@ -24,6 +24,7 @@ class TrackData:
         build the internal data structure
         """
         self.track_data = pd.DataFrame()
+        self.processed_track_data = pd.DataFrame()
         self.duration = 0
         self.segment_data = 0
 
@@ -33,6 +34,9 @@ class TrackData:
         """
         with open(filename) as gpx_file:
             self.process(gpx_file)
+
+        for processing_fn in TrackData.POST_PROCESS:
+            processing_fn(self)
 
     @staticmethod
     def isnotebook():
@@ -341,6 +345,116 @@ class TrackData:
         else:
             print(self.track_data)
 
+    def zero_tdiff_of_slow_point(self):
+        """
+        where a point can be reached from it's predecessor at less
+        than 3km/h the time difference is removed.  This gets the
+        track's active time matching Strava
+        but 2d distance is still a little short
+        """
+        self.processed_track_data = (
+            self.track_data.copy()
+        )  # don't modify original
+        self.processed_track_data.loc[
+            self.processed_track_data["delta_dist"]
+            / self.processed_track_data["tdiff"].apply(
+                lambda x: x.total_seconds()
+            )
+            <= 3000 / 3600,
+            "tdiff",
+        ] = pd.Timedelta(seconds=0)
+        return self.processed_track_data
+
+    @staticmethod
+    def fastest5k(dist_so_far, ignored_time_so_far):
+        """
+        testing function to find fastest 5k
+        """
+        return dist_so_far >= 5000
+
+    # have to use the strange __func__ referencer as the name is not entirely
+    # defined, nor boundto the class at compile time
+    def build_distance_list(self, test_after_adding_point=fastest5k.__func__):
+        """
+        find the set of activities within the track which meet the criterium
+
+        function tries to meet the criteria starting from the first point,
+        then the second etc, creating an entry in a DataFrame for each start
+        point for which there is a solution.
+        """
+
+        def meets_criteria(in_df, start_at, test_after_adding_point=None):
+            """
+            Lots of tests follow the same pattern, refactor using a testing
+            function
+            """
+            cum_time = pd.Timedelta(seconds=0)
+            cum_dist = 0
+            # print(f"mo dist: {start_at}")
+            for i in range(start_at + 1, in_df.shape[0]):
+                # print(f"{cum_dist}")
+                cum_time += in_df.iloc[i]["tdiff"]
+                cum_dist += in_df.iloc[i]["delta_dist"]
+                if (
+                    test_after_adding_point is not None
+                    and test_after_adding_point(cum_dist, cum_time)
+                ):
+                    return i, cum_dist, cum_time
+            return 0, 0, 0
+
+        start_row = 0
+        distance_list = []
+        (end_row, total_dist, total_time) = meets_criteria(
+            self.processed_track_data,
+            start_row,
+            test_after_adding_point=test_after_adding_point,
+        )
+        # print(end_row, total_dist, total_time)
+        last_row = self.processed_track_data.shape[0] - 1
+        while end_row < last_row and start_row < last_row:
+            item = {
+                "start_row": start_row,
+                "end_row": end_row,
+                "start_time": self.processed_track_data.iloc[start_row]["dt"],
+                "cum_dist": total_dist,
+                "cum_time": total_time,
+                "end_time": self.processed_track_data.iloc[end_row]["dt"],
+            }
+            distance_list.append(item.copy())
+
+            start_row += 1  # start at the next point
+
+            # which means removing the delta time and distance of that point
+            total_dist -= self.processed_track_data.iloc[start_row][
+                "delta_dist"
+            ]
+            total_time -= self.processed_track_data.iloc[start_row]["tdiff"]
+
+            # then adding points at the end until the criteria is met again
+            while end_row < last_row:
+                end_row += 1
+                total_dist += self.processed_track_data.iloc[end_row][
+                    "delta_dist"
+                ]
+                total_time += self.processed_track_data.iloc[end_row]["tdiff"]
+                if test_after_adding_point(total_dist, total_time):
+                    break
+
+        dl_df = pd.DataFrame(distance_list)
+        dl_df["secs_per_km"] = (
+            dl_df["cum_time"].apply(lambda x: x.total_seconds())
+            / dl_df["cum_dist"]
+            * 1000
+        )  # in s/km
+        dl_df["pace"] = dl_df["secs_per_km"].apply(
+            lambda x: pd.Timedelta(seconds=x)
+        )
+        dl_df.index = dl_df["start_time"]
+        dl_df.drop(["start_time"], inplace=True, axis="columns")
+        return dl_df
+
+    POST_PROCESS = [guess_activity_type, zero_tdiff_of_slow_point]
+
 
 class TestStuff(unittest.TestCase):
     """
@@ -397,6 +511,17 @@ class TestStuff(unittest.TestCase):
         t_3.slurp("/home/siddalp/Dropbox/pgm/gpx/_The_Everest_.gpx")
         self.assertEqual(t_3.guess_activity_type(), "run")
         print(t_3.segment_data)
+
+    def test_04(self):
+        """
+        this is a run
+        """
+        t_4 = TrackData()
+        t_4.slurp("/home/siddalp/Dropbox/pgm/gpx/_The_ABBA_.gpx")
+        self.assertEqual(t_4.guess_activity_type(), "run")
+        # d = t_4.build_distance_list(test_after_adding_point=TrackData.fastest5k)
+        distance_list = t_4.build_distance_list()
+        print(distance_list)
 
 
 def do_tests():
