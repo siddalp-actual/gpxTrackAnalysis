@@ -378,9 +378,17 @@ class TrackData:
         """
         find the set of activities within the track which meet the criterium
 
-        function tries to meet the criteria starting from the first point,
+        :param test_after_adding_point(total_metres: int, time_so_far:
+        pd.TimeDelta): boolean
+
+        a function returning true if the criterium has been met and false
+        otherwise. If no argument is provided, then the default function is
+        applied which returns the set of intervals which are 5k runs - the
+        minimum time of these would be the best 5k run.
+
+        build_distance_list tries to meet the criteria starting from the first point,
         then the second etc, creating an entry in a DataFrame for each start
-        point for which there is a solution.
+        point for which the call back returns true.
         """
 
         def meets_criteria(in_df, start_at, test_after_adding_point=None):
@@ -429,6 +437,13 @@ class TrackData:
                 "delta_dist"
             ]
             total_time -= self.processed_track_data.iloc[start_row]["tdiff"]
+
+            # even though the start point has been removed, we could still be
+            # in a situation where the cumulative distance and time are with
+            # the criteria
+            if test_after_adding_point(total_dist, total_time):
+                # record and go around the loop again
+                continue
 
             # then adding points at the end until the criteria is met again
             while end_row < last_row:
