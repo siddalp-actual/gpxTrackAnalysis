@@ -9,6 +9,7 @@ import sys
 import unittest
 
 import argparse
+import numpy as np
 import pandas as pd
 
 import gpxpy
@@ -183,6 +184,8 @@ class TrackData:
         else:
             print(self.segment_data)
 
+        return self.segment_data
+
     def guess_activity_type(self):
         """
         guess what activity each segment corresponds with, can be one of
@@ -253,19 +256,19 @@ class TrackData:
             if dist < 5000:
                 return 1
             if dist < 20000:
-                return (dist - 5000) / (20000 - 5000)
+                return (20000 - dist) / (20000 - 5000)
             return 0
 
         def running_distance(dist):
             """
-            Very likely from 3k - 20k
+            Very likely from 1k - 20k
             Reducing down to 30k
             0 > 30k
             """
-            if dist < 3000:
+            if dist < 1000:
                 return 0
             if dist < 5000:
-                return (dist - 3000) / (5000 - 3000)
+                return (dist - 1000) / (5000 - 1000)
             if dist < 20000:
                 return 1
             if dist < 30000:
@@ -320,6 +323,20 @@ class TrackData:
             self.segment_data["P(cycle) from distance"]
             + self.segment_data["P(cycle) from speed"]
         )
+
+        walk = np.array(walk_likelihood)
+        run = np.array(run_likelihood)
+        cycle = np.array(cycle_likelihood)
+        # build a matrix with rows corresponding to segments and
+        # columns corrresponding with walk, run, cycle
+        total_likelihood = np.vstack((walk, run, cycle)).T
+        # for each row, pull out the column with highest likelihood
+        most_likely = [
+            total_likelihood[x, :].argmax()
+            for x in range(total_likelihood.shape[0])
+        ]
+        act_type = [["walk", "run", "cycle"][x] for x in most_likely]
+        self.segment_data["activity_type"] = act_type
 
         # however, the xxx_likelihood is a series across segments, just sum
         if walk_likelihood.sum() > run_likelihood.sum():
@@ -376,20 +393,19 @@ class TrackData:
     # defined, nor boundto the class at compile time
     def build_distance_list(self, test_after_adding_point=fastest5k.__func__):
         """
-        find the set of activities within the track which meet the criterium
+        find the set of activities within the track which meet the criterion
 
         :param test_after_adding_point(total_metres: int, time_so_far:
         pd.TimeDelta): boolean
 
-        a function returning true if the criterium has been met and false
+        a function returning true if the criterion has been met and false
         otherwise. If no argument is provided, then the default function is
         applied which returns the set of intervals which are 5k runs - the
         minimum time of these would be the best 5k run.
 
-        build_distance_list tries to meet the criteria starting from the first point,
-        then the second etc, creating an entry in a DataFrame for each start
-        point for which the call back returns true.
-        """
+        build_distance_list tries to meet the criteria starting from the first
+        point, then the second etc, creating an entry in a DataFrame for each
+        start point for which the call back returns true."""
 
         def meets_criteria(in_df, start_at, test_after_adding_point=None):
             """
@@ -468,6 +484,29 @@ class TrackData:
         dl_df.drop(["start_time"], inplace=True, axis="columns")
         return dl_df
 
+    def show_strava_stats(self):
+        """
+        display and return a set of stats which are similar to those shown
+        in the summary of a Strava track
+        """
+        moving_distance = self.processed_track_data["delta_dist"].sum()
+        moving_time = self.processed_track_data["tdiff"].sum()
+        pace = pd.Timedelta(
+            seconds=moving_time.total_seconds() / moving_distance * 1000
+        )
+        elapsed_time = self.track_data["tdiff"].sum()
+        stats = {
+            "moving_distance": moving_distance,
+            "moving_time": moving_time,
+            "avg_pace": pace,
+            "elapsed_time": elapsed_time,
+        }
+        if TrackData.isnotebook():
+            display(stats)
+        else:
+            print(stats)
+        return stats
+
     POST_PROCESS = [guess_activity_type, zero_tdiff_of_slow_point]
 
 
@@ -537,6 +576,21 @@ class TestStuff(unittest.TestCase):
         # d = t_4.build_distance_list(test_after_adding_point=TrackData.fastest5k)
         distance_list = t_4.build_distance_list()
         print(distance_list)
+
+    def test_05(self):
+        """
+        For this track, Strava shows:
+        22.32km distance
+        2:17:19 moving time
+        6:09/km pace
+        241m Elevation
+        1868 Calories
+        2:51:57 Elapsed Time
+        """
+        t_5 = TrackData()
+        t_5.slurp("/home/siddalp/Dropbox/pgm/gpx/Would_yew_forest.gpx")
+        stats = t_5.show_strava_stats()
+        self.assertEqual(round(stats["moving_distance"] / 1000, 2), 22.32)
 
 
 def do_tests():

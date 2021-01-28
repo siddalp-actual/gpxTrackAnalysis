@@ -22,10 +22,11 @@ t_1.slurp(
 #    "/home/siddalp/Dropbox/pgm/gpx/Winnall_Moors_explore_and_bread_for_brekky.gpx",
 #    "/home/siddalp/Dropbox/pgm/gpx/_The_ABBA_.gpx",
 #    "/home/siddalp/Dropbox/pgm/gpx/Would_yew_forest.gpx",
-    "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
+    "/home/siddalp/Dropbox/pgm/gpx/Final_family_walk_before_Lent_term_starts.gpx"
 )
 #t_1.guess_activity_type()
-t_1.segment_summary()
+seg_data = t_1.segment_summary()
 t_1.show_point_info()
 
 
@@ -52,5 +53,7 @@ ax.get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(
     # the *divmod lets the tuple result be passed as parms to format
     lambda x, p: "{:d}:{:02}".format(*divmod(int(x/1e9),60))
 ))
+
+t_1.show_strava_stats()
 
 help(track_analyzer.TrackData.build_distance_list)
