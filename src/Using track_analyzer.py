@@ -23,7 +23,9 @@ t_1.slurp(
 #    "/home/siddalp/Dropbox/pgm/gpx/_The_ABBA_.gpx",
 #    "/home/siddalp/Dropbox/pgm/gpx/Would_yew_forest.gpx",
 #    "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
-    "/home/siddalp/Dropbox/pgm/gpx/Final_family_walk_before_Lent_term_starts.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/Final_family_walk_before_Lent_term_starts.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/When_the_route_ends_before_your_planned_distance.gpx"
+    "/home/siddalp/Dropbox/pgm/gpx/Nearly_dry_and_warm_enough_to_enjoy_cycling.gpx"
 )
 #t_1.guess_activity_type()
 seg_data = t_1.segment_summary()

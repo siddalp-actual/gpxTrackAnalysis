@@ -169,6 +169,7 @@ class TrackData:
     def segment_summary(self):
         """
         display track summary information built from segments
+        returns : the segment_summary DataFrame
         """
         print("Segment summary:")
         print(f"{self.segment_data['moving_distance'].count()} segments")
@@ -364,10 +365,11 @@ class TrackData:
 
     def zero_tdiff_of_slow_point(self):
         """
-        where a point can be reached from it's predecessor at less
-        than 3km/h the time difference is removed.  This gets the
-        track's active time matching Strava
-        but 2d distance is still a little short
+        where a point can be reached from it's predecessor at less than:
+         3km/h for running or
+         1km/h for cycling
+        the time difference is removed.  This gets the track's active time
+        matching Strava but 2d distance is still a little short
         """
         self.processed_track_data = (
             self.track_data.copy()
@@ -591,6 +593,25 @@ class TestStuff(unittest.TestCase):
         t_5.slurp("/home/siddalp/Dropbox/pgm/gpx/Would_yew_forest.gpx")
         stats = t_5.show_strava_stats()
         self.assertEqual(round(stats["moving_distance"] / 1000, 2), 22.32)
+
+    def test_06(self):
+        """
+        This track is a cycle ride, Strava shows:
+        51.64km distance
+        2:31:11 moving time : (2:25:48 this prog)
+        20.5km/h avg speed
+        374m elevation
+        1158kJ energy
+        2:56:05 Elapsed time
+        """
+        t_6 = TrackData()
+        t_6.slurp(
+            "/home/siddalp/Dropbox/pgm/gpx/Nearly_dry_and_warm_enough_to_enjoy_cycling.gpx"
+        )
+        stats = t_6.show_strava_stats()
+        seg_table = t_6.segment_summary()
+        self.assertEqual(seg_table.loc[0, "activity_type"], "cycle")
+        self.assertLessEqual(abs(stats["moving_distance"] - 51640), 20)
 
 
 def do_tests():
