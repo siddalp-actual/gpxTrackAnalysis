@@ -25,7 +25,8 @@ t_1.slurp(
 #    "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
 #    "/home/siddalp/Dropbox/pgm/gpx/Final_family_walk_before_Lent_term_starts.gpx"
 #    "/home/siddalp/Dropbox/pgm/gpx/When_the_route_ends_before_your_planned_distance.gpx"
-    "/home/siddalp/Dropbox/pgm/gpx/Nearly_dry_and_warm_enough_to_enjoy_cycling.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/Nearly_dry_and_warm_enough_to_enjoy_cycling.gpx"
+    "/home/siddalp/Dropbox/pgm/gpx/Not_the_HRRL_Ryde_10mi.gpx"
 )
 #t_1.guess_activity_type()
 seg_data = t_1.segment_summary()
@@ -34,12 +35,17 @@ t_1.show_point_info()
 
 # +
 def best_10mi(dist_so_far, time_so_far):
-    if dist_so_far >= 10000:
+    if dist_so_far >= 10 * 1609 :
+        return True
+    return False
+
+def best_5mi(dist_so_far, time_so_far):
+    if dist_so_far >= 5 * 1609 :
         return True
     return False
 
 #dl = t_1.build_distance_list()
-dl = t_1.build_distance_list()  #test_after_adding_point = best_10mi)
+dl = t_1.build_distance_list(test_after_adding_point = best_10mi)
 
 best_time = dl['cum_time'].min()
 pos_best_time = dl['cum_time'].idxmin()
@@ -53,7 +59,7 @@ ax = dl["pace"].plot()
 ax.set_ylabel("Pace")
 ax.get_yaxis().set_major_formatter(matplotlib.ticker.FuncFormatter(
     # the *divmod lets the tuple result be passed as parms to format
-    lambda x, p: "{:d}:{:02}".format(*divmod(int(x/1e9),60))
+    lambda x, p: "{:.0f}:{:02.1f}".format(*divmod(x/1e9, 60))
 ))
 
 t_1.show_strava_stats()
