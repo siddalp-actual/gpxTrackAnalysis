@@ -26,7 +26,12 @@ t_1.slurp(
 #    "/home/siddalp/Dropbox/pgm/gpx/Final_family_walk_before_Lent_term_starts.gpx"
 #    "/home/siddalp/Dropbox/pgm/gpx/When_the_route_ends_before_your_planned_distance.gpx"
 #    "/home/siddalp/Dropbox/pgm/gpx/Nearly_dry_and_warm_enough_to_enjoy_cycling.gpx"
-    "/home/siddalp/Dropbox/pgm/gpx/Not_the_HRRL_Ryde_10mi.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/Not_the_HRRL_Ryde_10mi.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/EA_5mi_road_relay_entry.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/2021-03-06_07-59_Sat.gpx"
+#     "/home/siddalp/Dropbox/pgm/gpx/Not_a_quick_Parkrun_.gpx"
+#    "/home/siddalp/Dropbox/pgm/gpx/Is_this_a_10k_loop_.gpx"
+    "/home/siddalp/Dropbox/pgm/gpx/The_best_laid_plans.gpx"
 )
 #t_1.guess_activity_type()
 seg_data = t_1.segment_summary()
@@ -44,12 +49,18 @@ def best_5mi(dist_so_far, time_so_far):
         return True
     return False
 
+def best_mile(dist_so_far, time_so_far):
+    if dist_so_far >= 1609:
+        return True
+    return False
+
 #dl = t_1.build_distance_list()
 dl = t_1.build_distance_list(test_after_adding_point = best_10mi)
 
 best_time = dl['cum_time'].min()
 pos_best_time = dl['cum_time'].idxmin()
 print(f"Best time of {best_time} in interval starting at {pos_best_time}")
+print(dl.loc[pos_best_time])
 
 display(dl)
 # -
