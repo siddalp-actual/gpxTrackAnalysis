@@ -9,6 +9,8 @@ import sys
 import unittest
 
 import argparse
+import os
+import re
 import numpy as np
 import pandas as pd
 
@@ -33,7 +35,7 @@ class TrackData:
         """
         parse a gpx file into an object
         """
-        with open(filename) as gpx_file:
+        with open(filename, "rb") as gpx_file:
             self.process(gpx_file)
 
         for processing_fn in TrackData.POST_PROCESS:
@@ -65,7 +67,7 @@ class TrackData:
         )
         cols = list(col_names.split(","))
         local_df = pd.DataFrame(columns=cols)
-        for (point, point_no) in track_segment.walk():
+        for point, point_no in track_segment.walk():
             #    for pointno, point in enumerate(s.points[0:20]):
             if point.extensions:
 
@@ -82,9 +84,7 @@ class TrackData:
             else:
                 speed = float(0)
             if point_no != 0:
-                calc_speed = point.speed_between(
-                    track_segment.points[point_no - 1]
-                )
+                calc_speed = point.speed_between(track_segment.points[point_no - 1])
                 #  distance = point.distance_3d(track_segment.points[point_no - 1])
                 distance = point.distance_2d(track_segment.points[point_no - 1])
             else:
@@ -118,9 +118,7 @@ class TrackData:
         )
 
         local_df.index = local_df["dt"]
-        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(
-            pd.Timedelta(seconds=0)
-        )
+        local_df["tdiff"] = (local_df["dt"].diff(1)).fillna(pd.Timedelta(seconds=0))
 
         return local_df
 
@@ -152,8 +150,11 @@ class TrackData:
                 moving_data_dict["2d length"] = segment.length_2d()
                 moving_data_dict["3d length"] = segment.length_3d()
 
-                moving_data = moving_data.append(
-                    moving_data_dict,
+                moving_data = pd.concat(
+                    (
+                        moving_data,
+                        pd.DataFrame(moving_data_dict, index=["dummy unused"]),
+                    ),
                     ignore_index=True,
                 )
                 if segment.has_times():
@@ -162,7 +163,9 @@ class TrackData:
                 else:
                     self.duration = pd.Timedelta(seconds=0)
 
-                all_data = all_data.append(self.get_point_info(seg_no, segment))
+                all_data = pd.concat(
+                    (all_data, self.get_point_info(seg_no, segment)), ignore_index=True
+                )
             self.track_data = all_data
             self.segment_data = moving_data
 
@@ -173,9 +176,7 @@ class TrackData:
         """
         print("Segment summary:")
         print(f"{self.segment_data['moving_distance'].count()} segments")
-        print(
-            "Total moving Distance", self.segment_data.sum()["moving_distance"]
-        )
+        print("Total moving Distance", self.segment_data.sum()["moving_distance"])
         print(
             "Total moving Time",
             pd.Timedelta(seconds=self.segment_data.sum()["moving_time"]),
@@ -195,8 +196,7 @@ class TrackData:
         """
         # speed in m/s
         self.segment_data["moving_speed"] = (
-            self.segment_data["moving_distance"]
-            / self.segment_data["moving_time"]
+            self.segment_data["moving_distance"] / self.segment_data["moving_time"]
         )
         # pace is a Timedelta representing time for 1km,
         self.segment_data["pace"] = self.segment_data["moving_speed"].apply(
@@ -333,8 +333,7 @@ class TrackData:
         total_likelihood = np.vstack((walk, run, cycle)).T
         # for each row, pull out the column with highest likelihood
         most_likely = [
-            total_likelihood[x, :].argmax()
-            for x in range(total_likelihood.shape[0])
+            total_likelihood[x, :].argmax() for x in range(total_likelihood.shape[0])
         ]
         act_type = [["walk", "run", "cycle"][x] for x in most_likely]
         self.segment_data["activity_type"] = act_type
@@ -371,14 +370,10 @@ class TrackData:
         the time difference is removed.  This gets the track's active time
         matching Strava but 2d distance is still a little short
         """
-        self.processed_track_data = (
-            self.track_data.copy()
-        )  # don't modify original
+        self.processed_track_data = self.track_data.copy()  # don't modify original
         self.processed_track_data.loc[
             self.processed_track_data["delta_dist"]
-            / self.processed_track_data["tdiff"].apply(
-                lambda x: x.total_seconds()
-            )
+            / self.processed_track_data["tdiff"].apply(lambda x: x.total_seconds())
             <= 3000 / 3600,
             "tdiff",
         ] = pd.Timedelta(seconds=0)
@@ -421,9 +416,8 @@ class TrackData:
                 # print(f"{cum_dist}")
                 cum_time += in_df.iloc[i]["tdiff"]
                 cum_dist += in_df.iloc[i]["delta_dist"]
-                if (
-                    test_after_adding_point is not None
-                    and test_after_adding_point(cum_dist, cum_time)
+                if test_after_adding_point is not None and test_after_adding_point(
+                    cum_dist, cum_time
                 ):
                     return i, cum_dist, cum_time
             return 0, 0, 0
@@ -451,9 +445,7 @@ class TrackData:
             start_row += 1  # start at the next point
 
             # which means removing the delta time and distance of that point
-            total_dist -= self.processed_track_data.iloc[start_row][
-                "delta_dist"
-            ]
+            total_dist -= self.processed_track_data.iloc[start_row]["delta_dist"]
             total_time -= self.processed_track_data.iloc[start_row]["tdiff"]
 
             # even though the start point has been removed, we could still be
@@ -466,9 +458,7 @@ class TrackData:
             # then adding points at the end until the criteria is met again
             while end_row < last_row:
                 end_row += 1
-                total_dist += self.processed_track_data.iloc[end_row][
-                    "delta_dist"
-                ]
+                total_dist += self.processed_track_data.iloc[end_row]["delta_dist"]
                 total_time += self.processed_track_data.iloc[end_row]["tdiff"]
                 if test_after_adding_point(total_dist, total_time):
                     break
@@ -479,9 +469,7 @@ class TrackData:
             / dl_df["cum_dist"]
             * 1000
         )  # in s/km
-        dl_df["pace"] = dl_df["secs_per_km"].apply(
-            lambda x: pd.Timedelta(seconds=x)
-        )
+        dl_df["pace"] = dl_df["secs_per_km"].apply(lambda x: pd.Timedelta(seconds=x))
         dl_df.index = dl_df["start_time"]
         dl_df.drop(["start_time"], inplace=True, axis="columns")
         return dl_df
@@ -512,6 +500,34 @@ class TrackData:
     POST_PROCESS = [guess_activity_type, zero_tdiff_of_slow_point]
 
 
+class OSMAnd_Track_File:
+    """
+    The name of the OSMAnd GPX file tells us about when it was created
+    """
+
+    def __init__(self, filename):
+        """
+        info about the gpx file
+        """
+        self.filename = filename
+        self.track_date = self.date_from_track_name(filename)
+        self.trackdata = TrackData()
+
+    @staticmethod
+    def date_from_track_name(n):
+        """
+        gpx tracks from OSM have a name like 2022-07-04_07-35_Mon.gpx
+        the _Mon suffix is an overspecification, so remove it, and parse the rest
+        as a date
+        """
+        fn = os.path.basename(n)
+        (date_portion, unused_extension) = os.path.splitext(fn)
+        # print(f"front: {date_portion} back: {ext}")
+        without_junk = re.sub(r"_\w{3}", "", date_portion)
+        track_date = datetime.datetime.strptime(without_junk, "%Y-%m-%d_%H-%M")
+        return track_date
+
+
 class TestStuff(unittest.TestCase):
     """
     Re-use the gpx file test cases to pull a gpx file into a Pandas dataframe
@@ -528,9 +544,7 @@ class TestStuff(unittest.TestCase):
         this gpx was recorded on OSMAnd, has times, elevations and speeds
         """
         t_0 = TrackData()
-        t_0.slurp(
-            "/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx"
-        )
+        t_0.slurp("/home/siddalp/Dropbox/pgm/gpx/EA_5_mi_virtual_road_relay_entry.gpx")
         self.assertFalse(t_0.segment_data.empty)
         self.assertFalse(t_0.track_data.empty)
         t_0.segment_summary()
@@ -628,12 +642,8 @@ def main():
     will slurp in a file, or run unit tests
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--test", help="run the unit tests", action="store_true"
-    )
-    parser.add_argument(
-        "filename", help="track file to be read", type=str, nargs="?"
-    )
+    parser.add_argument("--test", help="run the unit tests", action="store_true")
+    parser.add_argument("filename", help="track file to be read", type=str, nargs="?")
     args = parser.parse_args()
     if args.test:
         print("running unit tests")
