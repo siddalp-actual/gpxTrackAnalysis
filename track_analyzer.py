@@ -513,19 +513,35 @@ class OSMAnd_Track_File:
         self.track_date = self.date_from_track_name(filename)
         self.trackdata = TrackData()
 
+    def slurp(self):
+        """
+        actually read the data points from gpx into the internal trackdata
+        """
+        # with open(self.filename, "r") as file_handle:
+        # self.trackdata.process(file_handle)
+        self.trackdata.slurp(self.filename)
+
     @staticmethod
-    def date_from_track_name(n):
+    def date_from_track_name(path_name):
         """
         gpx tracks from OSM have a name like 2022-07-04_07-35_Mon.gpx
         the _Mon suffix is an overspecification, so remove it, and parse the rest
         as a date
         """
-        fn = os.path.basename(n)
-        (date_portion, unused_extension) = os.path.splitext(fn)
+        file_name = os.path.basename(path_name)
+        (date_portion, unused_extension) = os.path.splitext(file_name)
         # print(f"front: {date_portion} back: {ext}")
         without_junk = re.sub(r"_\w{3}", "", date_portion)
         track_date = datetime.datetime.strptime(without_junk, "%Y-%m-%d_%H-%M")
         return track_date
+
+    @staticmethod
+    def dirname_for_date(timestamp):
+        """
+        OSMAnd stores recorded files by directory name based on the month and
+        the year.  These are in the shape "2023-07"
+        """
+        return "{:4d}-{:02d}".format(timestamp.year, timestamp.month)
 
 
 class TestStuff(unittest.TestCase):
