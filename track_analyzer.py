@@ -164,7 +164,8 @@ class TrackData:
                     self.duration = pd.Timedelta(seconds=0)
 
                 all_data = pd.concat(
-                    (all_data, self.get_point_info(seg_no, segment)), ignore_index=True
+                    (all_data, self.get_point_info(seg_no, segment)),
+                    ignore_index=True,
                 )
             self.track_data = all_data
             self.segment_data = moving_data
@@ -543,6 +544,28 @@ class OSMAnd_Track_File:
         """
         return "{:4d}-{:02d}".format(timestamp.year, timestamp.month)
 
+    @staticmethod
+    def month_range(start_date, end_date):
+        """
+        an iterator: for m in month_range(start, end):
+        returns a date in each month between the start and end dates inclusive
+        """
+        if isinstance(start_date, str):
+            start_date = pd.to_datetime(start_date)
+        if isinstance(end_date, str):
+            end_date = pd.to_datetime(end_date)
+
+        year = start_date.year
+        month = start_date.month  # set start month
+        while year <= end_date.year:
+            while (month <= 12 and year < end_date.year) or (
+                year == end_date.year and month <= end_date.month
+            ):
+                yield datetime.datetime(year, month, start_date.day)
+                month += 1
+            year += 1
+            month = 1  # when year incremented, start month back to 1
+
 
 class TestStuff(unittest.TestCase):
     """
@@ -642,6 +665,32 @@ class TestStuff(unittest.TestCase):
         seg_table = t_6.segment_summary()
         self.assertEqual(seg_table.loc[0, "activity_type"], "cycle")
         self.assertLessEqual(abs(stats["moving_distance"] - 51640), 20)
+
+    def test_07(self):
+        """
+        OSMAnd_Track_File.date_from_trackname() returns a datetime corresponding with
+        what's encoded in the filename
+        """
+        t_7_date = OSMAnd_Track_File.date_from_track_name("2023-07-17_10-52_Mon.gpx")
+        self.assertEqual(t_7_date, datetime.datetime(2023, 7, 17, 10, 52))
+
+    def test_08(self):
+        """
+        OSMAND_Track_File.dirname_for_date() returns a string of the form
+        yyyy-mm
+        """
+        t8_date = datetime.datetime(2023, 7, 19)
+        self.assertEqual(OSMAnd_Track_File.dirname_for_date(t8_date), "2023-07")
+
+    def test_09(self):
+        """
+        OSMAnd_Track_File.monthrange(start, end) is an iterator returning one date
+        per month in the range
+        """
+        t09_date = datetime.datetime(2023, 7, 19)
+        self.assertEqual(
+            list(OSMAnd_Track_File.month_range(t09_date, t09_date)), [t09_date]
+        )
 
 
 def do_tests():
