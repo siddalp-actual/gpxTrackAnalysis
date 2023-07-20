@@ -30,6 +30,11 @@ class TrackData:
         self.processed_track_data = pd.DataFrame()
         self.duration = 0
         self.segment_data = 0
+        self.east_bound = None
+        self.west_bound = None
+        self.north_bound = None
+        self.south_bound = None
+        self.centre = None
 
     def slurp(self, filename):
         """
@@ -498,7 +503,20 @@ class TrackData:
             print(stats)
         return stats
 
-    POST_PROCESS = [guess_activity_type, zero_tdiff_of_slow_point]
+    def calc_track_bounds(self):
+        """
+        set the min and max of lat and long
+        """
+        self.west_bound = min(self.track_data["Longitude"])
+        self.east_bound = max(self.track_data["Longitude"])
+        self.north_bound = max(self.track_data["Latitude"])
+        self.south_bound = max(self.track_data["Latitude"])
+        self.centre = [
+            np.mean([self.west_bound, self.east_bound]),
+            np.mean([self.north_bound, self.south_bound]),
+        ]
+
+    POST_PROCESS = [guess_activity_type, zero_tdiff_of_slow_point, calc_track_bounds]
 
 
 class OSMAnd_Track_File:
