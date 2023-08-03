@@ -5,6 +5,7 @@
 __module__ = "track_analyzer"
 
 import datetime
+import logging
 import sys
 import unittest
 
@@ -35,11 +36,13 @@ class TrackData:
         self.north_bound = None
         self.south_bound = None
         self.centre = None
+        self.logger = logging.getLogger(__name__)
 
     def slurp(self, filename):
         """
         parse a gpx file into an object
         """
+        self.logger.debug(f"slurp() {filename}")
         with open(filename, "rb") as gpx_file:
             self.process(gpx_file)
 
@@ -66,6 +69,7 @@ class TrackData:
         """
         extract data from points in a segment and push it into a DataFrame
         """
+        logging.getLogger().debug(f"get_point_info() {segment_number} {track_segment}")
         col_names = (
             "SegNo,PointNo,Date_time,Latitude,Longitude,Altitude,GPS Speed,DOP,"
             "gpxpy_speed,seg_speed,delta_dist"
@@ -96,7 +100,11 @@ class TrackData:
                 # print( dir(point))
                 calc_speed = float(0)
                 distance = float(0)
-            seg_speed = float(track_segment.get_speed(point_no))
+            try:
+                # if segment only has a single point, get_speed() returns None
+                seg_speed = float(track_segment.get_speed(point_no))
+            except TypeError:
+                seg_speed = 0
 
             local_df.loc[point_no] = [
                 segment_number,
@@ -135,12 +143,14 @@ class TrackData:
            at the global level for use in subsequent cells
         """
 
+        self.logger.debug(f"process() {input_file}")
         gpx = gpxpy.parse(input_file)
 
         for track in gpx.tracks:
             all_data = pd.DataFrame()
             moving_data = pd.DataFrame()
             for seg_no, segment in enumerate(track.segments):
+                self.logger.debug("segment {seg_no} has {len(segment.points)}")
                 if segment.has_elevations():
                     (up_m, down_m) = segment.get_uphill_downhill()
                 else:
@@ -206,7 +216,7 @@ class TrackData:
         )
         # pace is a Timedelta representing time for 1km,
         self.segment_data["pace"] = self.segment_data["moving_speed"].apply(
-            lambda x: pd.Timedelta(seconds=1000 / x)
+            lambda x: pd.Timedelta(seconds=1000 / x if x > 0 else 0)
         )
 
         def walk_likelihood(speed):
